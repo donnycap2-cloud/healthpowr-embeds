@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HealthPowr — Map Animation</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css"/>
+  <style>
+    :root {
+      --teal:       #0d9b8a;
+      --teal-dark:  #0b8a7a;
+      --teal-light: #e1f5ee;
+      --teal-mid:   #c2e8e0;
+      --dark:       #0b1d2a;
+      --near-black: #0f1f2e;
+      --text-mid:   #4b6b65;
+      --text-muted: #7a9e99;
+      --border:     #e8f0ee;
+      --border-dark:#c8e4dc;
+      --off-white:  #f6faf8;
+      --white:      #ffffff;
+      --green:      #15803d;
+      --green-light:#dcfce7;
+      --amber:      #92400e;
+      --amber-light:#fef3c7;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--off-white);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    .hero-right { position: relative; width: 100%; max-width: 520px; height: 480px; isolation: isolate; }
+    .anim-outer { position: absolute; inset: 0; background: var(--off-white); border-radius: 24px; border: 1.5px solid var(--border-dark); padding: 8px; overflow: hidden; }
+    .anim-shell { position: relative; height: 100%; min-height: 460px; border-radius: 18px; }
+    .anim-map-clip { position: absolute; inset: 0; border-radius: 18px; overflow: hidden; }
+    #leafletMap { width: 100%; height: 100%; min-height: 460px; border-radius: 18px; }
+
+    .bubble { position: absolute; background: var(--white); border-radius: 14px; padding: 10px 14px; display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); box-shadow: 0 2px 12px rgba(0,0,0,0.07); }
+    .bubble-icon { width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .bubble-icon svg { width: 16px; height: 16px; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+    .bubble-text { display: flex; flex-direction: column; gap: 2px; }
+    .bubble-title { font-size: 12px; font-weight: 700; color: var(--near-black); }
+    .bubble-sub { font-size: 11px; color: var(--text-muted); }
+    .bubble-badge { font-size: 10px; font-weight: 700; border-radius: 100px; padding: 3px 9px; white-space: nowrap; }
+    .badge-open { background: var(--green-light); color: var(--green); }
+    .badge-slots { background: var(--teal-light); color: var(--teal-dark); }
+
+    .bw-bubble { transition: all 0.25s ease; cursor: pointer; }
+    .bw-bubble.clicked { border-color: var(--teal); background: var(--teal-light); transform: scale(1.03); }
+
+    .anim-sheet { position: absolute; bottom: 0; left: 0; right: 0; background: #fff; border-radius: 16px 16px 18px 18px; padding: 12px 16px 16px; z-index: 600; transform: translateY(100%); transition: transform 0.45s cubic-bezier(0.34, 1.1, 0.64, 1); border-top: 1px solid var(--border); }
+    .anim-sheet.visible { transform: translateY(0); }
+    .sheet-handle { width: 36px; height: 4px; background: var(--border); border-radius: 2px; margin: 0 auto 12px; }
+    .sheet-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .sheet-progress-bar { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; margin-bottom: 12px; }
+    .sheet-progress-fill { height: 100%; background: var(--teal); width: 66%; border-radius: 2px; }
+    .sheet-fields { display: flex; flex-direction: column; gap: 7px; margin-bottom: 12px; }
+    .sheet-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+    .sheet-field { background: var(--off-white); border: 1.5px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 12px; color: #0f1f2e; min-height: 34px; display: flex; align-items: center; }
+    .sheet-typed { color: #0f1f2e; }
+    .sheet-cursor { color: var(--teal); font-weight: 300; animation: blink 0.7s infinite; }
+    .sheet-submit { width: 100%; background: var(--teal); color: #fff; border: none; border-radius: 10px; padding: 11px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; margin-bottom: 8px; transition: transform 0.15s, background 0.15s; }
+    .sheet-submit.flash { background: var(--teal-dark); transform: scale(0.98); }
+    .track-sheet-card { background: var(--teal-light); border: 1px solid var(--teal-mid); border-radius: 12px; padding: 12px; }
+    .track-sheet-msg { font-size: 12px; color: #4b6b65; background: #fff; border-radius: 8px; padding: 9px 11px; line-height: 1.5; min-height: 38px; border: 1px solid var(--border); }
+
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+    @keyframes pinPulse { 0%,100%{box-shadow:0 0 0 0 rgba(13,155,138,0.4)} 50%{box-shadow:0 0 0 6px rgba(13,155,138,0)} }
+    .pin-lg { animation: pinPulse 2s infinite; }
+  </style>
+</head>
+<body>
+
+<div class="hero-right">
+  <div class="anim-outer">
+    <div class="anim-shell" id="animShell">
+
+      <!-- MAP LAYER -->
+      <div class="anim-map-clip">
+        <div id="leafletMap"></div>
+      </div>
+
+      <!-- BUBBLES -->
+      <div class="bubble" style="top:10px;left:10px;min-width:200px;z-index:500;">
+        <div class="bubble-icon" style="background:var(--teal-light);">
+          <svg viewBox="0 0 16 16" fill="none" stroke="var(--teal)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 6.5L8 2l6 4.5V14a1 1 0 01-1 1H3a1 1 0 01-1-1V6.5z"/>
+            <path d="M6 15V9h4v6"/>
+          </svg>
+        </div>
+        <div class="bubble-text">
+          <span class="bubble-title">Safe Haven Shelter</span>
+          <span class="bubble-sub">0.3 mi · Emergency housing</span>
+        </div>
+        <span class="bubble-badge badge-open">Open</span>
+      </div>
+
+      <div class="bubble bw-bubble" id="bwBubble" style="top:38%;right:10px;min-width:210px;z-index:500;">
+        <div class="bubble-icon" style="background:#fff7ed;">
+          <svg viewBox="0 0 16 16" fill="none" stroke="#c2410c" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 5h10M3 8h10M3 11h6"/><rect x="1" y="2" width="14" height="12" rx="2"/>
+          </svg>
+        </div>
+        <div class="bubble-text">
+          <span class="bubble-title">BronxWorks Food Pantry</span>
+          <span class="bubble-sub">0.6 mi · Open until 6pm</span>
+        </div>
+        <span class="bubble-badge badge-open">Open</span>
+      </div>
+
+      <div class="bubble" style="bottom:10px;left:14%;min-width:218px;z-index:500;">
+        <div class="bubble-icon" style="background:#ede9fe;">
+          <svg viewBox="0 0 16 16" fill="none" stroke="#6d28d9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="1" y="1" width="14" height="14" rx="3"/>
+            <path d="M8 5v6M5 8h6" stroke-width="2"/>
+          </svg>
+        </div>
+        <div class="bubble-text">
+          <span class="bubble-title">Urban Health Plan Clinic</span>
+          <span class="bubble-sub">1.1 mi · Free primary care</span>
+        </div>
+        <span class="bubble-badge badge-slots">3 slots</span>
+      </div>
+
+      <!-- FORM SHEET -->
+      <div class="anim-sheet" id="formSheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-header">
+          <div style="width:32px;height:32px;border-radius:8px;background:#fff7ed;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg viewBox="0 0 16 16" fill="none" stroke="#c2410c" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;">
+              <path d="M3 5h10M3 8h10M3 11h6"/><rect x="1" y="2" width="14" height="12" rx="2"/>
+            </svg>
+          </div>
+          <div>
+            <div style="font-size:13px;font-weight:700;color:#0f1f2e;">BronxWorks Food Pantry</div>
+            <div style="font-size:11px;color:#7a9e99;">Request support · Verified
+              <svg viewBox="0 0 16 16" style="width:10px;height:10px;display:inline-block;vertical-align:middle;" fill="none" stroke="#0d9b8a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8l4 4 8-8"/></svg>
+            </div>
+          </div>
+        </div>
+        <div class="sheet-progress-bar"><div class="sheet-progress-fill"></div></div>
+        <div class="sheet-fields">
+          <div class="sheet-field-row">
+            <div class="sheet-field"><span class="sheet-typed" id="typeNameField"></span><span class="sheet-cursor" id="cursorName">|</span></div>
+            <div class="sheet-field" style="color:#0f1f2e;">Mott Haven, Bronx</div>
+          </div>
+          <div class="sheet-field"><span class="sheet-typed" id="typeSituationField"></span><span class="sheet-cursor" id="cursorSituation" style="display:none;">|</span></div>
+          <div class="sheet-field-row">
+            <div class="sheet-field" style="color:#9bbcb6;font-size:12px;">Urgency level</div>
+            <div class="sheet-field" style="color:#0f1f2e;">This week</div>
+          </div>
+        </div>
+        <button class="sheet-submit" id="submitBtn">Submit request →</button>
+        <div style="font-size:11px;color:#9bbcb6;text-align:center;">Free · Private · No spam</div>
+      </div>
+
+      <!-- TRACKER SHEET -->
+      <div class="anim-sheet" id="trackSheet">
+        <div class="sheet-handle"></div>
+        <div style="font-size:12px;font-weight:700;color:#0f1f2e;margin-bottom:10px;">My applications</div>
+        <div class="track-sheet-card">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+            <div style="width:30px;height:30px;border-radius:50%;background:var(--teal);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0;">BW</div>
+            <div style="flex:1;">
+              <div style="font-size:12px;font-weight:700;color:#0f1f2e;">BronxWorks Food Pantry</div>
+              <div style="font-size:10px;color:#7a9e99;">Food assistance · Just submitted</div>
+            </div>
+            <span style="font-size:10px;font-weight:700;background:#dcfce7;color:#15803d;border-radius:100px;padding:2px 8px;">Responded</span>
+          </div>
+          <div class="track-sheet-msg">
+            <strong>Caseworker Denise: </strong><span class="sheet-typed" id="typeCaseworkerField"></span><span class="sheet-cursor" id="cursorCaseworker">|</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+            <div style="flex:1;height:3px;background:var(--teal-mid);border-radius:2px;overflow:hidden;">
+              <div style="height:100%;background:var(--teal);border-radius:2px;width:0%;transition:width 3s linear;" id="trackProgressBar"></div>
+            </div>
+            <span style="font-size:10px;color:#7a9e99;">Responded in 4 hrs</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js"></script>
+<script>
+(function() {
+  var nameText = "Maria R.";
+  var situationText = "Lost job, need food for family of 3";
+  var caseworkerText = "Hi Maria — confirmed for Thursday 10am–1pm. Bring photo ID, we'll have a bag ready.";
+
+  function initMap() {
+    var mapEl = document.getElementById('leafletMap');
+    if (!mapEl || !window.L) return;
+    var map = L.map('leafletMap', {
+      center: [40.8100, -73.9265], zoom: 14,
+      zoomControl: false, scrollWheelZoom: false, dragging: false,
+      touchZoom: false, doubleClickZoom: false, boxZoom: false,
+      keyboard: false, attributionControl: false
+    });
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(map);
+    setTimeout(function() { map.invalidateSize(); }, 300);
+    var sm = L.divIcon({ className: '', html: '<div style="width:12px;height:12px;border-radius:50%;background:#0d9b8a;border:2.5px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.3);"></div>', iconSize: [12,12], iconAnchor: [6,6] });
+    var lg = L.divIcon({ className: '', html: '<div style="width:16px;height:16px;border-radius:50%;background:#0d9b8a;border:3px solid #fff;box-shadow:0 0 0 4px rgba(13,155,138,0.25);animation:pinPulse 2s infinite;"></div>', iconSize: [16,16], iconAnchor: [8,8] });
+    L.marker([40.8118, -73.9242], {icon: lg}).addTo(map);
+    L.marker([40.8082, -73.9198], {icon: sm}).addTo(map);
+    L.marker([40.8145, -73.9310], {icon: sm}).addTo(map);
+    L.marker([40.8065, -73.9280], {icon: sm}).addTo(map);
+    L.marker([40.8130, -73.9175], {icon: sm}).addTo(map);
+  }
+
+  function initAnim() {
+    var bwBubble = document.getElementById('bwBubble');
+    var formSheet = document.getElementById('formSheet');
+    var trackSheet = document.getElementById('trackSheet');
+    var submitBtn = document.getElementById('submitBtn');
+    var typeNameField = document.getElementById('typeNameField');
+    var typeSituationField = document.getElementById('typeSituationField');
+    var typeCaseworkerField = document.getElementById('typeCaseworkerField');
+    var cursorName = document.getElementById('cursorName');
+    var cursorSituation = document.getElementById('cursorSituation');
+    var cursorCaseworker = document.getElementById('cursorCaseworker');
+    var trackProgressBar = document.getElementById('trackProgressBar');
+    if (!bwBubble) return;
+
+    var timers = [];
+    function after(ms, fn) { timers.push(setTimeout(fn, ms)); }
+
+    function typeText(el, text, speed, done) {
+      var i = 0; el.textContent = '';
+      var iv = setInterval(function() {
+        el.textContent += text[i]; i++;
+        if (i >= text.length) { clearInterval(iv); if (done) done(); }
+      }, speed);
+      timers.push(iv);
+    }
+
+    function reset() {
+      timers.forEach(function(t) { clearTimeout(t); clearInterval(t); });
+      timers.length = 0;
+      bwBubble.classList.remove('clicked');
+      formSheet.classList.remove('visible');
+      trackSheet.classList.remove('visible');
+      typeNameField.textContent = '';
+      typeSituationField.textContent = '';
+      typeCaseworkerField.textContent = '';
+      cursorName.style.display = 'inline';
+      cursorSituation.style.display = 'none';
+      cursorCaseworker.style.display = 'inline';
+      submitBtn.classList.remove('flash');
+      trackProgressBar.style.transition = 'none';
+      trackProgressBar.style.width = '0%';
+    }
+
+    function runCycle() {
+      reset();
+      after(2000, function() { bwBubble.classList.add('clicked'); });
+      after(2600, function() {
+        formSheet.classList.add('visible');
+        after(500, function() {
+          typeText(typeNameField, nameText, 70, function() {
+            cursorName.style.display = 'none';
+            cursorSituation.style.display = 'inline';
+            after(300, function() { typeText(typeSituationField, situationText, 55, null); });
+          });
+        });
+      });
+      after(6200, function() { submitBtn.classList.add('flash'); });
+      after(6800, function() {
+        formSheet.classList.remove('visible');
+        after(350, function() {
+          trackSheet.classList.add('visible');
+          trackProgressBar.style.transition = 'width 3s linear';
+          trackProgressBar.style.width = '100%';
+          after(400, function() { typeText(typeCaseworkerField, caseworkerText, 38, null); });
+        });
+      });
+      after(11500, function() { runCycle(); });
+    }
+
+    runCycle();
+  }
+
+  window.addEventListener('load', function() {
+    initMap();
+    setTimeout(initAnim, 500);
+  });
+})();
+</script>
+</body>
+</html>
